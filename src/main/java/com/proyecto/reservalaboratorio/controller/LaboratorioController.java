@@ -2,7 +2,8 @@ package com.proyecto.reservalaboratorio.controller;
 
 import java.util.List;
 
-import com.proyecto.reservalaboratorio.entity.Laboratorio;
+import com.proyecto.reservalaboratorio.dto.LaboratorioRequest;
+import com.proyecto.reservalaboratorio.dto.LaboratorioResponse;
 import com.proyecto.reservalaboratorio.service.LaboratorioService;
 
 import jakarta.validation.Valid;
@@ -26,31 +27,34 @@ public class LaboratorioController {
 
     public LaboratorioController(
             LaboratorioService laboratorioService) {
+
         this.laboratorioService = laboratorioService;
     }
 
     @GetMapping
-    public List<Laboratorio> listar() {
+    public List<LaboratorioResponse> listar() {
         return laboratorioService.listar();
     }
 
     @GetMapping("/{id}")
-    public Laboratorio buscarPorId(@PathVariable("id") Long id) {
+    public LaboratorioResponse buscarPorId(@PathVariable("id") Long id) {
         return laboratorioService.buscarPorId(id);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Laboratorio crear(
-            @Valid @RequestBody Laboratorio laboratorio) {
-        return laboratorioService.crear(laboratorio);
+    public LaboratorioResponse crear(
+            @Valid @RequestBody LaboratorioRequest datos) {
+
+        return laboratorioService.crear(datos);
     }
 
     @PutMapping("/{id}")
-    public Laboratorio actualizar(
+    public LaboratorioResponse actualizar(
             @PathVariable("id") Long id,
-            @Valid @RequestBody Laboratorio laboratorio) {
-        return laboratorioService.actualizar(id, laboratorio);
+            @Valid @RequestBody LaboratorioRequest datos) {
+
+        return laboratorioService.actualizar(id, datos);
     }
 
     @DeleteMapping("/{id}")

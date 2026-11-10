@@ -3,7 +3,9 @@ package com.proyecto.reservalaboratorio.controller;
 import java.time.LocalDate;
 import java.util.List;
 
-import com.proyecto.reservalaboratorio.entity.Reserva;
+import com.proyecto.reservalaboratorio.dto.HorarioOcupadoResponse;
+import com.proyecto.reservalaboratorio.dto.ReservaRequest;
+import com.proyecto.reservalaboratorio.dto.ReservaResponse;
 import com.proyecto.reservalaboratorio.service.ReservaService;
 
 import jakarta.validation.Valid;
@@ -32,27 +34,27 @@ public class ReservaController {
     }
 
     @GetMapping
-    public List<Reserva> listar() {
+    public List<ReservaResponse> listar() {
         return reservaService.listar();
     }
 
     @GetMapping("/{id}")
-    public Reserva buscarPorId(@PathVariable("id") Long id) {
+    public ReservaResponse buscarPorId(@PathVariable("id") Long id) {
         return reservaService.buscarPorId(id);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Reserva crear(@Valid @RequestBody Reserva reserva) {
-        return reservaService.crear(reserva);
+    public ReservaResponse crear(@Valid @RequestBody ReservaRequest datos) {
+        return reservaService.crear(datos);
     }
 
     @PutMapping("/{id}")
-    public Reserva actualizar(
+    public ReservaResponse actualizar(
             @PathVariable("id") Long id,
-            @Valid @RequestBody Reserva reserva) {
+            @Valid @RequestBody ReservaRequest datos) {
 
-        return reservaService.actualizar(id, reserva);
+        return reservaService.actualizar(id, datos);
     }
 
     @DeleteMapping("/{id}")
@@ -62,7 +64,7 @@ public class ReservaController {
     }
 
     @GetMapping("/buscar")
-    public List<Reserva> buscarPorLaboratorioYFecha(
+    public List<ReservaResponse> buscarPorLaboratorioYFecha(
             @RequestParam("laboratorioId") Long laboratorioId,
             @RequestParam("fecha")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
@@ -71,5 +73,15 @@ public class ReservaController {
         return reservaService.buscarPorLaboratorioYFecha(
             laboratorioId, fecha
         );
+    }
+
+    @GetMapping("/ocupados")
+    public List<HorarioOcupadoResponse> horariosOcupados(
+            @RequestParam("laboratorioId") Long laboratorioId,
+            @RequestParam("fecha")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fecha) {
+
+        return reservaService.horariosOcupados(laboratorioId, fecha);
     }
 }

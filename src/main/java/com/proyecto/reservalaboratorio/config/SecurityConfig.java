@@ -27,7 +27,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            JwtAuthenticationConverter jwtAuthenticationConverter)
+            JwtAuthenticationConverter jwtAuthenticationConverter,
+            ErroresSeguridadHandler erroresSeguridad)
             throws Exception {
 
         http
@@ -70,15 +71,23 @@ public class SecurityConfig {
                 )
                     .hasRole("ADMINISTRADOR")
 
-                // Añadiremos el acceso del solicitante con
-                // comprobación de propiedad de cada reserva.
-.requestMatchers("/api/reservas", "/api/reservas/**")
-.hasAnyRole("ADMINISTRADOR", "SOLICITANTE")
+                // El servicio comprueba que el solicitante solo
+                // acceda a sus propias reservas.
+                .requestMatchers("/api/reservas", "/api/reservas/**")
+                    .hasAnyRole("ADMINISTRADOR", "SOLICITANTE")
 
                 .anyRequest().denyAll()
             )
 
+            // Respuestas 401 y 403 en formato JSON.
+            .exceptionHandling(errores -> errores
+                .authenticationEntryPoint(erroresSeguridad)
+                .accessDeniedHandler(erroresSeguridad)
+            )
+
             .oauth2ResourceServer(oauth2 -> oauth2
+                .authenticationEntryPoint(erroresSeguridad)
+                .accessDeniedHandler(erroresSeguridad)
                 .jwt(jwt -> jwt
                     .jwtAuthenticationConverter(
                         jwtAuthenticationConverter

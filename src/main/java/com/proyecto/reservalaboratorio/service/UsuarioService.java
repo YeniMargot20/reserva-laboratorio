@@ -4,7 +4,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 
+import com.proyecto.reservalaboratorio.dto.UsuarioActualizarRequest;
 import com.proyecto.reservalaboratorio.dto.UsuarioCrearRequest;
+import com.proyecto.reservalaboratorio.dto.UsuarioResponse;
 import com.proyecto.reservalaboratorio.entity.Rol;
 import com.proyecto.reservalaboratorio.entity.Usuario;
 import com.proyecto.reservalaboratorio.repository.UsuarioRepository;
@@ -26,32 +28,34 @@ public class UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UsuarioActualService usuarioActualService;
 
     public UsuarioService(
         UsuarioRepository usuarioRepository,
-        PasswordEncoder passwordEncoder
+        PasswordEncoder passwordEncoder,
+        UsuarioActualService usuarioActualService
     ) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
+        this.usuarioActualService = usuarioActualService;
     }
 
     @Transactional(readOnly = true)
-    public List<Usuario> listar() {
-        return usuarioRepository.findAll();
+    public List<UsuarioResponse> listar() {
+        return usuarioRepository.findAll()
+            .stream()
+            .map(UsuarioResponse::desde)
+            .toList();
     }
 
     @Transactional(readOnly = true)
-    public Usuario buscarPorId(Long id) {
-        return usuarioRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Usuario no encontrado"
-            ));
+    public UsuarioResponse buscarPorId(Long id) {
+        return UsuarioResponse.desde(obtener(id));
     }
 
-    public Usuario crear(@NotNull @Valid UsuarioCrearRequest datos) {
+    public UsuarioResponse crear(@NotNull @Valid UsuarioCrearRequest datos) {
+
         String correo = normalizarCorreo(datos.correo());
-
         comprobarCorreoDisponible(correo, null);
 
         if (datos.password().getBytes(StandardCharsets.UTF_8).length > 72) {
@@ -62,6 +66,7 @@ public class UsuarioService {
         }
 
         Usuario usuario = new Usuario();
+
         usuario.setNombre(datos.nombre().trim());
         usuario.setCorreo(correo);
         usuario.setActivo(true);
@@ -70,36 +75,69 @@ public class UsuarioService {
             passwordEncoder.encode(datos.password())
         );
 
-        return usuarioRepository.save(usuario);
+        return UsuarioResponse.desde(usuarioRepository.save(usuario));
     }
 
-    public Usuario actualizar(Long id, @NotNull @Valid Usuario datos) {
-        Usuario usuario = buscarPorId(id);
-        String correo = normalizarCorreo(datos.getCorreo());
+    public UsuarioResponse actualizar(
+            Long id, @NotNull @Valid UsuarioActualizarRequest datos) {
 
+        Usuario usuario = obtener(id);
+
+        String correo = normalizarCorreo(datos.correo());
         comprobarCorreoDisponible(correo, id);
 
-        usuario.setNombre(datos.getNombre().trim());
-        usuario.setCorreo(correo);
-        usuario.setActivo(datos.getActivo());
+        if (!datos.activo() && esUsuarioActual(id)) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "No puedes desactivar tu propia cuenta"
+            );
+        }
 
-        return usuarioRepository.save(usuario);
+        usuario.setNombre(datos.nombre().trim());
+        usuario.setCorreo(correo);
+        usuario.setActivo(datos.activo());
+
+        return UsuarioResponse.desde(usuarioRepository.save(usuario));
     }
 
     public void eliminar(Long id) {
-        Usuario usuario = buscarPorId(id);
+
+        Usuario usuario = obtener(id);
+
+        if (esUsuarioActual(id)) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "No puedes eliminar tu propia cuenta"
+            );
+        }
+
         usuarioRepository.delete(usuario);
+        // Un usuario con reservas se informa como conflicto (409).
+        usuarioRepository.flush();
     }
 
     @Transactional(readOnly = true)
-    public Usuario buscarPorCorreo(String correo) {
+    public UsuarioResponse buscarPorCorreo(String correo) {
         return usuarioRepository.buscarPorCorreo(
                 normalizarCorreo(correo)
             )
+            .map(UsuarioResponse::desde)
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND,
                 "Usuario no encontrado"
             ));
+    }
+
+    private Usuario obtener(Long id) {
+        return usuarioRepository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Usuario no encontrado"
+            ));
+    }
+
+    private boolean esUsuarioActual(Long id) {
+        return usuarioActualService.obtener().getId().equals(id);
     }
 
     private String normalizarCorreo(String correo) {

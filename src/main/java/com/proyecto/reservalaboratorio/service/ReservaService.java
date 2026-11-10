@@ -3,9 +3,13 @@ package com.proyecto.reservalaboratorio.service;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.proyecto.reservalaboratorio.dto.HorarioOcupadoResponse;
+import com.proyecto.reservalaboratorio.dto.ReservaRequest;
+import com.proyecto.reservalaboratorio.dto.ReservaResponse;
 import com.proyecto.reservalaboratorio.entity.Laboratorio;
 import com.proyecto.reservalaboratorio.entity.Reserva;
 import com.proyecto.reservalaboratorio.entity.Usuario;
+import com.proyecto.reservalaboratorio.repository.LaboratorioRepository;
 import com.proyecto.reservalaboratorio.repository.ReservaRepository;
 import com.proyecto.reservalaboratorio.repository.UsuarioRepository;
 
@@ -27,74 +31,97 @@ public class ReservaService {
 
     private final ReservaRepository reservaRepository;
     private final UsuarioRepository usuarioRepository;
+    private final LaboratorioRepository laboratorioRepository;
     private final EntityManager entityManager;
     private final UsuarioActualService usuarioActualService;
 
     public ReservaService(
             ReservaRepository reservaRepository,
             UsuarioRepository usuarioRepository,
+            LaboratorioRepository laboratorioRepository,
             EntityManager entityManager,
             UsuarioActualService usuarioActualService) {
 
         this.reservaRepository = reservaRepository;
         this.usuarioRepository = usuarioRepository;
+        this.laboratorioRepository = laboratorioRepository;
         this.entityManager = entityManager;
         this.usuarioActualService = usuarioActualService;
     }
 
     @Transactional(readOnly = true)
-    public List<Reserva> listar() {
+    public List<ReservaResponse> listar() {
         Usuario actual = usuarioActualService.obtener();
 
-        if (usuarioActualService.esAdministrador(actual)) {
-            return reservaRepository.findAll();
-        }
+        List<Reserva> reservas =
+            usuarioActualService.esAdministrador(actual)
+                ? reservaRepository.findAll()
+                : reservaRepository.buscarPorUsuario(actual.getId());
 
-        return reservaRepository.buscarPorUsuario(actual.getId());
+        return reservas.stream().map(ReservaResponse::desde).toList();
     }
 
     @Transactional(readOnly = true)
-    public Reserva buscarPorId(Long id) {
+    public ReservaResponse buscarPorId(Long id) {
         Usuario actual = usuarioActualService.obtener();
-
-        Reserva reserva = reservaRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Reserva no encontrada"
-            ));
+        Reserva reserva = obtener(id);
 
         comprobarAcceso(actual, reserva);
-        return reserva;
+
+        return ReservaResponse.desde(reserva);
     }
 
     @Transactional(readOnly = true)
-    public List<Reserva> buscarPorLaboratorioYFecha(
+    public List<ReservaResponse> buscarPorLaboratorioYFecha(
             Long laboratorioId, LocalDate fecha) {
 
         Usuario actual = usuarioActualService.obtener();
 
-        if (usuarioActualService.esAdministrador(actual)) {
-            return reservaRepository.buscarPorLaboratorioYFecha(
-                laboratorioId, fecha
+        List<Reserva> reservas =
+            usuarioActualService.esAdministrador(actual)
+                ? reservaRepository.buscarPorLaboratorioYFecha(
+                    laboratorioId, fecha
+                )
+                : reservaRepository.buscarPorLaboratorioFechaYUsuario(
+                    laboratorioId, fecha, actual.getId()
+                );
+
+        return reservas.stream().map(ReservaResponse::desde).toList();
+    }
+
+    /**
+     * Franjas ya ocupadas de un laboratorio en una fecha. Permite al
+     * solicitante elegir un horario libre antes de enviar la reserva.
+     */
+    @Transactional(readOnly = true)
+    public List<HorarioOcupadoResponse> horariosOcupados(
+            Long laboratorioId, LocalDate fecha) {
+
+        usuarioActualService.obtener();
+
+        if (!laboratorioRepository.existsById(laboratorioId)) {
+            throw new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Laboratorio no encontrado"
             );
         }
 
-        return reservaRepository.buscarPorLaboratorioFechaYUsuario(
-            laboratorioId, fecha, actual.getId()
-        );
+        return reservaRepository
+            .buscarPorLaboratorioYFecha(laboratorioId, fecha)
+            .stream()
+            .filter(reserva -> !"CANCELADA".equals(reserva.getEstado()))
+            .map(HorarioOcupadoResponse::desde)
+            .toList();
     }
 
-    public Reserva crear(@NotNull @Valid Reserva datos) {
+    public ReservaResponse crear(@NotNull @Valid ReservaRequest datos) {
+
         Usuario actual = usuarioActualService.obtener();
 
-        if (datos.getLaboratorio() == null
-                || datos.getLaboratorio().getId() == null
-                || datos.getUsuario() == null
-                || datos.getUsuario().getId() == null) {
-
+        if (datos.fecha().isBefore(LocalDate.now())) {
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "Debes indicar el ID del laboratorio y del usuario"
+                "No se puede reservar en una fecha pasada"
             );
         }
 
@@ -102,13 +129,13 @@ public class ReservaService {
 
         if (usuarioActualService.esAdministrador(actual)) {
             propietario = usuarioRepository
-                .findById(datos.getUsuario().getId())
+                .findById(datos.usuarioId())
                 .orElseThrow(() -> new ResponseStatusException(
                     HttpStatus.NOT_FOUND,
                     "Usuario no encontrado"
                 ));
         } else {
-            if (!actual.getId().equals(datos.getUsuario().getId())) {
+            if (!actual.getId().equals(datos.usuarioId())) {
                 throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "Solo puedes crear reservas para tu propia cuenta"
@@ -118,9 +145,11 @@ public class ReservaService {
             propietario = actual;
         }
 
+        // Bloquea el laboratorio para evitar dos reservas simultáneas
+        // en el mismo horario.
         Laboratorio laboratorio = entityManager.find(
             Laboratorio.class,
-            datos.getLaboratorio().getId(),
+            datos.laboratorioId(),
             LockModeType.PESSIMISTIC_WRITE
         );
 
@@ -133,52 +162,33 @@ public class ReservaService {
 
         if (!Boolean.TRUE.equals(laboratorio.getActivo())
                 || !Boolean.TRUE.equals(propietario.getActivo())) {
-
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "El laboratorio y el usuario deben estar activos"
             );
         }
 
-        List<Reserva> reservas = reservaRepository
-            .buscarPorLaboratorioYFecha(
-                laboratorio.getId(), datos.getFecha()
-            );
-
-        boolean hayCruce = reservas.stream().anyMatch(reserva ->
-            !"CANCELADA".equals(reserva.getEstado())
-            && datos.getHoraInicio().isBefore(reserva.getHoraFin())
-            && datos.getHoraFin().isAfter(reserva.getHoraInicio())
-        );
-
-        if (hayCruce) {
-            throw new ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "El laboratorio ya tiene una reserva en ese horario"
-            );
-        }
+        comprobarCruce(laboratorio.getId(), datos, null);
 
         Reserva reserva = new Reserva();
+
         reserva.setUsuario(propietario);
         reserva.setLaboratorio(laboratorio);
-        reserva.setFecha(datos.getFecha());
-        reserva.setHoraInicio(datos.getHoraInicio());
-        reserva.setHoraFin(datos.getHoraFin());
-        reserva.setMotivo(datos.getMotivo());
+        reserva.setFecha(datos.fecha());
+        reserva.setHoraInicio(datos.horaInicio());
+        reserva.setHoraFin(datos.horaFin());
+        reserva.setMotivo(datos.motivo().trim());
         reserva.setEstado("PENDIENTE");
 
-        return reservaRepository.save(reserva);
+        return ReservaResponse.desde(reservaRepository.save(reserva));
     }
 
-    public Reserva actualizar(Long id, @NotNull @Valid Reserva datos) {
+    public ReservaResponse actualizar(
+            Long id, @NotNull @Valid ReservaRequest datos) {
+
         Usuario actual = usuarioActualService.obtener();
 
-        Reserva reserva = reservaRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND,
-                "Reserva no encontrada"
-            ));
-
+        Reserva reserva = obtener(id);
         comprobarAcceso(actual, reserva);
 
         Laboratorio laboratorio = entityManager.find(
@@ -190,13 +200,8 @@ public class ReservaService {
         entityManager.refresh(reserva);
         comprobarAcceso(actual, reserva);
 
-        if (datos.getUsuario() == null
-                || !reserva.getUsuario().getId()
-                    .equals(datos.getUsuario().getId())
-                || datos.getLaboratorio() == null
-                || !laboratorio.getId()
-                    .equals(datos.getLaboratorio().getId())) {
-
+        if (!reserva.getUsuario().getId().equals(datos.usuarioId())
+                || !laboratorio.getId().equals(datos.laboratorioId())) {
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "No se puede cambiar el usuario ni el laboratorio de la reserva"
@@ -205,7 +210,6 @@ public class ReservaService {
 
         if (!Boolean.TRUE.equals(laboratorio.getActivo())
                 || !Boolean.TRUE.equals(reserva.getUsuario().getActivo())) {
-
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "El laboratorio y el usuario deben estar activos"
@@ -216,68 +220,81 @@ public class ReservaService {
             usuarioActualService.esAdministrador(actual);
 
         if (!esAdministrador
-                && !reserva.getEstado().equals(datos.getEstado())) {
-
+                && datos.estado() != null
+                && !reserva.getEstado().equals(datos.estado())) {
             throw new ResponseStatusException(
                 HttpStatus.FORBIDDEN,
                 "Solo el administrador puede cambiar el estado"
             );
         }
 
-        String estado = esAdministrador
-            ? datos.getEstado()
+        String estado = esAdministrador && datos.estado() != null
+            ? datos.estado()
             : reserva.getEstado();
 
         if (!"CANCELADA".equals(estado)) {
-            boolean hayCruce = reservaRepository
-                .buscarPorLaboratorioYFecha(
-                    laboratorio.getId(), datos.getFecha()
-                )
-                .stream()
-                .anyMatch(otra ->
-                    !otra.getId().equals(reserva.getId())
-                    && !"CANCELADA".equals(otra.getEstado())
-                    && datos.getHoraInicio().isBefore(otra.getHoraFin())
-                    && datos.getHoraFin().isAfter(otra.getHoraInicio())
-                );
-
-            if (hayCruce) {
-                throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "El laboratorio ya tiene una reserva en ese horario"
-                );
-            }
+            comprobarCruce(laboratorio.getId(), datos, reserva.getId());
         }
 
-        reserva.setFecha(datos.getFecha());
-        reserva.setHoraInicio(datos.getHoraInicio());
-        reserva.setHoraFin(datos.getHoraFin());
-        reserva.setMotivo(datos.getMotivo());
+        reserva.setFecha(datos.fecha());
+        reserva.setHoraInicio(datos.horaInicio());
+        reserva.setHoraFin(datos.horaFin());
+        reserva.setMotivo(datos.motivo().trim());
         reserva.setEstado(estado);
 
-        return reservaRepository.save(reserva);
+        return ReservaResponse.desde(reservaRepository.save(reserva));
     }
 
     public void eliminar(Long id) {
+
         Usuario actual = usuarioActualService.obtener();
 
-        Reserva reserva = reservaRepository.findById(id)
+        Reserva reserva = obtener(id);
+        comprobarAcceso(actual, reserva);
+
+        reservaRepository.delete(reserva);
+    }
+
+    private Reserva obtener(Long id) {
+        return reservaRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND,
                 "Reserva no encontrada"
             ));
+    }
 
-        comprobarAcceso(actual, reserva);
-        reservaRepository.delete(reserva);
+    /**
+     * Rechaza la reserva si se cruza con otra no cancelada del mismo
+     * laboratorio y fecha. Se ignora la propia reserva al actualizar.
+     */
+    private void comprobarCruce(
+            Long laboratorioId, ReservaRequest datos, Long reservaIdActual) {
+
+        boolean hayCruce = reservaRepository
+            .buscarPorLaboratorioYFecha(laboratorioId, datos.fecha())
+            .stream()
+            .anyMatch(otra ->
+                !otra.getId().equals(reservaIdActual)
+                && !"CANCELADA".equals(otra.getEstado())
+                && datos.horaInicio().isBefore(otra.getHoraFin())
+                && datos.horaFin().isAfter(otra.getHoraInicio())
+            );
+
+        if (hayCruce) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "El laboratorio ya tiene una reserva en ese horario"
+            );
+        }
     }
 
     private void comprobarAcceso(Usuario actual, Reserva reserva) {
+
         boolean esPropietario = reserva.getUsuario() != null
             && actual.getId().equals(reserva.getUsuario().getId());
 
         if (!usuarioActualService.esAdministrador(actual)
                 && !esPropietario) {
-
             throw new ResponseStatusException(
                 HttpStatus.FORBIDDEN,
                 "No tienes permiso para acceder a esta reserva"
