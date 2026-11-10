@@ -1,9 +1,15 @@
 package com.proyecto.reservalaboratorio.service;
 
 import java.time.LocalDate;
+import java.time.Duration;
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.proyecto.reservalaboratorio.dto.HorarioOcupadoResponse;
+import com.proyecto.reservalaboratorio.dto.IndicadorOcupacionResponse;
 import com.proyecto.reservalaboratorio.dto.ReservaRequest;
 import com.proyecto.reservalaboratorio.dto.ReservaResponse;
 import com.proyecto.reservalaboratorio.entity.Laboratorio;
@@ -28,6 +34,10 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 @Transactional
 public class ReservaService {
+
+    // Horario de atención del laboratorio, usado para calcular la ocupación.
+    private static final LocalTime HORA_APERTURA = LocalTime.of(8, 0);
+    private static final LocalTime HORA_CIERRE = LocalTime.of(22, 0);
 
     private final ReservaRepository reservaRepository;
     private final UsuarioRepository usuarioRepository;
@@ -271,6 +281,68 @@ public class ReservaService {
                     + laboratorio.getCapacidad() + ")"
             );
         }
+    }
+
+    /**
+     * Indicadores de ocupación por laboratorio en un rango de fechas.
+     */
+    @Transactional(readOnly = true)
+    public List<IndicadorOcupacionResponse> indicadores(
+            LocalDate desde, LocalDate hasta) {
+
+        if (hasta.isBefore(desde)) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "La fecha final no puede ser anterior a la inicial"
+            );
+        }
+
+        long dias = ChronoUnit.DAYS.between(desde, hasta) + 1;
+        double horasPorDia =
+            Duration.between(HORA_APERTURA, HORA_CIERRE).toMinutes() / 60.0;
+        double horasDisponibles = dias * horasPorDia;
+
+        Map<Long, List<Reserva>> reservasPorLaboratorio = reservaRepository
+            .buscarActivasEntreFechas(desde, hasta)
+            .stream()
+            .collect(Collectors.groupingBy(
+                reserva -> reserva.getLaboratorio().getId()
+            ));
+
+        return laboratorioRepository.findAll().stream()
+            .filter(lab -> Boolean.TRUE.equals(lab.getActivo()))
+            .map(lab -> {
+                List<Reserva> reservas = reservasPorLaboratorio
+                    .getOrDefault(lab.getId(), List.of());
+
+                double horasReservadas = reservas.stream()
+                    .mapToLong(r -> Duration
+                        .between(r.getHoraInicio(), r.getHoraFin())
+                        .toMinutes())
+                    .sum() / 60.0;
+
+                double promedioAsistentes = reservas.stream()
+                    .mapToInt(Reserva::getNumeroAsistentes)
+                    .average()
+                    .orElse(0);
+
+                return new IndicadorOcupacionResponse(
+                    lab.getId(),
+                    lab.getNombre(),
+                    lab.getCapacidad(),
+                    reservas.size(),
+                    redondear(horasReservadas),
+                    redondear(horasDisponibles),
+                    redondear(horasReservadas / horasDisponibles * 100),
+                    redondear(promedioAsistentes),
+                    redondear(promedioAsistentes / lab.getCapacidad() * 100)
+                );
+            })
+            .toList();
+    }
+
+    private double redondear(double valor) {
+        return Math.round(valor * 10.0) / 10.0;
     }
 
     private Reserva obtener(Long id) {
