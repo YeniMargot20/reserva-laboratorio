@@ -327,6 +327,7 @@ class ApiIntegracionTest {
 
         return "{\"usuarioId\":" + usuarioId + ",\"laboratorioId\":" + labId
             + ",\"fecha\":\"" + fecha + "\",\"horaInicio\":\"" + inicio
-            + "\",\"horaFin\":\"" + fin + "\",\"motivo\":\"Clase práctica\"}";
+            + "\",\"horaFin\":\"" + fin + "\",\"motivo\":\"Clase práctica\","
+            + "\"numeroAsistentes\":1}";
     }
 }

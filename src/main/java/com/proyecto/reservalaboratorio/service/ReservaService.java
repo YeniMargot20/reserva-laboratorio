@@ -167,7 +167,7 @@ public class ReservaService {
                 "El laboratorio y el usuario deben estar activos"
             );
         }
-
+        comprobarAforo(laboratorio, datos);
         comprobarCruce(laboratorio.getId(), datos, null);
 
         Reserva reserva = new Reserva();
@@ -178,6 +178,7 @@ public class ReservaService {
         reserva.setHoraInicio(datos.horaInicio());
         reserva.setHoraFin(datos.horaFin());
         reserva.setMotivo(datos.motivo().trim());
+                reserva.setNumeroAsistentes(datos.numeroAsistentes());
         reserva.setEstado("PENDIENTE");
 
         return ReservaResponse.desde(reservaRepository.save(reserva));
@@ -215,7 +216,7 @@ public class ReservaService {
                 "El laboratorio y el usuario deben estar activos"
             );
         }
-
+        comprobarAforo(laboratorio, datos);
         boolean esAdministrador =
             usuarioActualService.esAdministrador(actual);
 
@@ -240,6 +241,7 @@ public class ReservaService {
         reserva.setHoraInicio(datos.horaInicio());
         reserva.setHoraFin(datos.horaFin());
         reserva.setMotivo(datos.motivo().trim());
+        reserva.setNumeroAsistentes(datos.numeroAsistentes());
         reserva.setEstado(estado);
 
         return ReservaResponse.desde(reservaRepository.save(reserva));
@@ -253,6 +255,22 @@ public class ReservaService {
         comprobarAcceso(actual, reserva);
 
         reservaRepository.delete(reserva);
+    }
+
+    /**
+     * Rechaza la reserva si hay más asistentes que la capacidad
+     * del laboratorio.
+     */
+    private void comprobarAforo(Laboratorio laboratorio, ReservaRequest datos) {
+
+        if (datos.numeroAsistentes() > laboratorio.getCapacidad()) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "El número de asistentes (" + datos.numeroAsistentes()
+                    + ") supera la capacidad del laboratorio ("
+                    + laboratorio.getCapacidad() + ")"
+            );
+        }
     }
 
     private Reserva obtener(Long id) {

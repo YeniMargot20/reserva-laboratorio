@@ -66,6 +66,7 @@ class ReservaServiceTest {
         laboratorio.setId(1L);
         laboratorio.setNombre("Lab 1");
         laboratorio.setActivo(true);
+        laboratorio.setCapacidad(30);
     }
 
     @Test
@@ -148,7 +149,7 @@ class ReservaServiceTest {
 
         ReservaRequest ayer = new ReservaRequest(
             10L, 1L, LocalDate.now().minusDays(1),
-            LocalTime.of(8, 0), LocalTime.of(9, 0), "Clase", null
+            LocalTime.of(8, 0), LocalTime.of(9, 0), "Clase", null, 1
         );
 
         assertThatThrownBy(() -> reservaService.crear(ayer))
@@ -161,7 +162,7 @@ class ReservaServiceTest {
         return new ReservaRequest(
             usuarioId, 1L, manana,
             LocalTime.parse(inicio), LocalTime.parse(fin),
-            "Clase práctica", null
+            "Clase práctica", null, 1
         );
     }
 

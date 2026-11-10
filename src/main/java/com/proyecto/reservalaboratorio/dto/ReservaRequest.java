@@ -6,6 +6,7 @@ import java.time.LocalTime;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -40,7 +41,11 @@ public record ReservaRequest(
         regexp = "PENDIENTE|CONFIRMADA|CANCELADA",
         message = "El estado debe ser PENDIENTE, CONFIRMADA o CANCELADA"
     )
-    String estado
+      String estado,
+
+    @NotNull(message = "El número de asistentes es obligatorio")
+    @Min(value = 1, message = "Debe haber al menos 1 asistente")
+    Integer numeroAsistentes
 
 ) {
 
