@@ -18,7 +18,8 @@ public record ReservaResponse(
     LocalTime horaInicio,
     LocalTime horaFin,
     String motivo,
-    String estado
+    String estado,
+    Integer numeroAsistentes
 ) {
 
     public static ReservaResponse desde(Reserva reserva) {
@@ -32,7 +33,8 @@ public record ReservaResponse(
             reserva.getHoraInicio(),
             reserva.getHoraFin(),
             reserva.getMotivo(),
-            reserva.getEstado()
+            reserva.getEstado(),
+            reserva.getNumeroAsistentes()
         );
     }
 }

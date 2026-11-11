@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.proyecto.reservalaboratorio.dto.HorarioOcupadoResponse;
+import com.proyecto.reservalaboratorio.dto.IndicadorOcupacionResponse;
 import com.proyecto.reservalaboratorio.dto.ReservaRequest;
 import com.proyecto.reservalaboratorio.dto.ReservaResponse;
 import com.proyecto.reservalaboratorio.service.ReservaService;
@@ -80,8 +81,22 @@ public class ReservaController {
             @RequestParam("laboratorioId") Long laboratorioId,
             @RequestParam("fecha")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate fecha) {
+            LocalDate fecha)
+            
+            {
 
         return reservaService.horariosOcupados(laboratorioId, fecha);
+    }
+
+        @GetMapping("/indicadores")
+    public List<IndicadorOcupacionResponse> indicadores(
+            @RequestParam("desde")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate desde,
+            @RequestParam("hasta")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate hasta) {
+
+        return reservaService.indicadores(desde, hasta);
     }
 }

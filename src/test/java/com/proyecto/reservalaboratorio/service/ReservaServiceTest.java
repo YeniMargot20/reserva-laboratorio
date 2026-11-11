@@ -66,6 +66,7 @@ class ReservaServiceTest {
         laboratorio.setId(1L);
         laboratorio.setNombre("Lab 1");
         laboratorio.setActivo(true);
+        laboratorio.setCapacidad(30);
     }
 
     @Test
@@ -148,7 +149,7 @@ class ReservaServiceTest {
 
         ReservaRequest ayer = new ReservaRequest(
             10L, 1L, LocalDate.now().minusDays(1),
-            LocalTime.of(8, 0), LocalTime.of(9, 0), "Clase", null
+            LocalTime.of(8, 0), LocalTime.of(9, 0), "Clase", null, 1
         );
 
         assertThatThrownBy(() -> reservaService.crear(ayer))
@@ -157,11 +158,33 @@ class ReservaServiceTest {
             .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+       @Test
+       @DisplayName("Rechaza con 400 si los asistentes superan la capacidad")
+       void rechazaExcesoDeAforo() {
+           when(usuarioActualService.obtener()).thenReturn(solicitante);
+           when(entityManager.find(Laboratorio.class, 1L, LockModeType.PESSIMISTIC_WRITE))
+               .thenReturn(laboratorio);
+
+           // El laboratorio de la prueba tiene capacidad 30
+           ReservaRequest exceso = new ReservaRequest(
+               10L, 1L, manana,
+               LocalTime.of(8, 0), LocalTime.of(10, 0),
+               "Clase", null, 31
+           );
+
+           assertThatThrownBy(() -> reservaService.crear(exceso))
+               .isInstanceOf(ResponseStatusException.class)
+               .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+               .isEqualTo(HttpStatus.BAD_REQUEST);
+
+           verify(reservaRepository, never()).save(any());
+       }
+
     private ReservaRequest solicitud(Long usuarioId, String inicio, String fin) {
         return new ReservaRequest(
             usuarioId, 1L, manana,
             LocalTime.parse(inicio), LocalTime.parse(fin),
-            "Clase práctica", null
+            "Clase práctica", null, 1
         );
     }
 

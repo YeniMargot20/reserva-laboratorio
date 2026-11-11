@@ -16,6 +16,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Min;
 
 @Entity
 @Table(name = "reservas")
@@ -51,6 +52,11 @@ public class Reserva {
     @Size(max = 200)
     @Column(nullable = false, length = 200)
     private String motivo;
+
+        @NotNull
+    @Min(1)
+    @Column(name = "numero_asistentes", nullable = false)
+    private Integer numeroAsistentes = 1;
 
     @NotBlank
     @Pattern(regexp = "PENDIENTE|CONFIRMADA|CANCELADA")
@@ -121,6 +127,15 @@ public class Reserva {
     public void setMotivo(String motivo) {
         this.motivo = motivo;
     }
+
+        public Integer getNumeroAsistentes() {
+        return numeroAsistentes;
+    }
+
+    public void setNumeroAsistentes(Integer numeroAsistentes) {
+        this.numeroAsistentes = numeroAsistentes;
+    }
+
 
     public String getEstado() {
         return estado;

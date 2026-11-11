@@ -44,4 +44,16 @@ public interface ReservaRepository
         @Param("fecha") LocalDate fecha,
         @Param("usuarioId") Long usuarioId
     );
+
+        @Query("""
+        SELECT r FROM Reserva r
+        WHERE r.fecha BETWEEN :desde AND :hasta
+          AND r.estado <> 'CANCELADA'
+        ORDER BY r.laboratorio.id, r.fecha, r.horaInicio
+        """)
+    List<Reserva> buscarActivasEntreFechas(
+        @Param("desde") LocalDate desde,
+        @Param("hasta") LocalDate hasta
+    );
+
 }

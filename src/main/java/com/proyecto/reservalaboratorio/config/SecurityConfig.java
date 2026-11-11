@@ -71,6 +71,9 @@ public class SecurityConfig {
                 )
                     .hasRole("ADMINISTRADOR")
 
+                .requestMatchers(HttpMethod.GET, "/api/reservas/indicadores")
+                    .hasRole("ADMINISTRADOR")
+
                 // El servicio comprueba que el solicitante solo
                 // acceda a sus propias reservas.
                 .requestMatchers("/api/reservas", "/api/reservas/**")
